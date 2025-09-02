@@ -1,0 +1,60 @@
+name: Docker Image CI
+
+on:
+  push:
+    branches: [ "master" ]
+    tags: [ 'v*.*.*' ]
+  pull_request:
+    branches: [ "master" ]
+
+jobs:
+  build_and_push:
+    runs-on: ubuntu-latest
+    # Grant permissions for the GITHUB_TOKEN to push to GHCR
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    # 1. Login to GitHub Container Registry
+    - name: Login to GHCR
+      uses: docker/login-action@v3
+      with:
+        registry: ghcr.io
+        # The GITHUB_ACTOR is the username of the account that triggered the workflow
+        username: ${{ github.actor }}
+        # The GITHUB_TOKEN is a special, temporary token automatically created by Actions
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    # 2. Generate image name and tags
+    # This action generates metadata (tags, labels) for the docker image
+    - name: Docker meta
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        # The image name in GHCR is ghcr.io/OWNER/IMAGE_NAME
+        # github.repository_owner is the username or organization name (e.g., "your-github-username")
+        images: ghcr.io/${{ github.repository_owner }}/ahey-bun
+        tags: |
+          # Create a semver tag for git tags like v1.2.3 -> v1.2.3
+          type=semver,pattern={{version}},prefix=v
+          # Create a 'latest' tag for the latest semver tag
+          type=semver,pattern={{major}}.{{minor}},enable=true 
+          # Create a tag for the branch name for pushes to master -> master
+          type=ref,event=branch
+          # Use the git SHA as a tag for traceability
+          type=sha
+
+    # 3. Build and push the Docker image
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        file: ./Dockerfile
+        push: true
+        # The tags and labels are provided by the 'meta' step
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
